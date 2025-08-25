@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-// Kamera bilgileri
+// Camera information
 const CAMERA_IP = '192.168.1.187';
 const USERNAME = 'admin';
 const PASSWORD = 'admin';
@@ -13,7 +13,7 @@ const headers = {
     'Content-Type': 'application/x-www-form-urlencoded'
 };
 
-// PTZ Kontrol Fonksiyonları
+// PTZ Control Functions
 class CameraPTZ {
     constructor() {
         this.baseUrl = BASE_URL;
@@ -21,7 +21,7 @@ class CameraPTZ {
     }
 
 
-    // Hi3510 PTZ kontrolü (Gerçek çalışan metod)
+    // Hi3510 PTZ control (Working method)
     async hi3510Control(direction, speed = 45) {
         const actions = {
             'left': 'left',
@@ -40,18 +40,18 @@ class CameraPTZ {
             console.log(`✅ Hi3510 control: ${direction}`);
             return true;
         } catch (error) {
-            console.log(`❌ Hi3510 control hatası: ${error.message}`);
+            console.log(`❌ Hi3510 control error: ${error.message}`);
             return false;
         }
     }
     
 
-    // Hareket kontrolü
+    // Movement control
     async move(direction, duration = 500) {
         const success = await this.hi3510Control(direction);
         
         if (success && duration > 0 && direction !== 'stop' && direction !== 'home') {
-            // Belirtilen süre sonra dur
+            // Stop after specified duration
             setTimeout(async () => {
                 await this.hi3510Control('stop');
             }, duration);
@@ -62,7 +62,7 @@ class CameraPTZ {
 }
 
 
-// Express API sunucusu (Web arayüzü için)
+// Express API server (for web interface)
 const express = require('express');
 const cors = require('cors');
 
@@ -75,34 +75,34 @@ function startServer() {
     
     const ptz = new CameraPTZ();
     
-    // PTZ hareket endpoint'i
+    // PTZ movement endpoint
     app.post('/ptz/move', async (req, res) => {
         const { direction, duration = 500 } = req.body;
-        console.log(`📹 PTZ Hareket isteği: ${direction} (${duration}ms)`);
+        console.log(`📹 PTZ Movement request: ${direction} (${duration}ms)`);
         
         try {
             const result = await ptz.move(direction, duration);
             res.json({ success: !!result, method: result });
         } catch (error) {
-            console.error('PTZ Hata:', error);
+            console.error('PTZ Error:', error);
             res.status(500).json({ error: error.message });
         }
     });
     
     app.listen(PORT, () => {
-        console.log(`\n🚀 PTZ API Sunucusu başlatıldı: http://localhost:${PORT}`);
-        console.log('📝 Endpoint: POST /ptz/move - Kamera hareketi\n');
+        console.log(`\n🚀 PTZ API Server started: http://localhost:${PORT}`);
+        console.log('📝 Endpoint: POST /ptz/move - Camera movement\n');
     });
 }
 
-// Ana program
+// Main program
 if (require.main === module) {
     const args = process.argv.slice(2);
     
     if (args[0] === 'server') {
         startServer();
     } else {
-        console.log('Kullanım: node camera-ptz-api.js server');
+        console.log('Usage: node camera-ptz-api.js server');
     }
 }
 

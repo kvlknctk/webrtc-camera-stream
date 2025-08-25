@@ -1,8 +1,13 @@
 {
   "name": "webrtc-camera-stream",
   "version": "1.0.0",
-  "description": "Node.js WebRTC kamera stream sunucusu",
+  "description": "Node.js WebRTC camera stream server",
   "main": "webrtc-server.js",
+  "author": {
+    "name": "Volkan Catak",
+    "email": "iletisim@volkancatak.com.tr"
+  },
+  "license": "MIT",
   "scripts": {
     "start": "node webrtc-server.js",
     "dev": "nodemon webrtc-server.js"

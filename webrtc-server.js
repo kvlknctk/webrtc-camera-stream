@@ -6,32 +6,32 @@ const path = require('path');
 const app = express();
 const PORT = 8080;
 
-// RTSP bilgileri
+// RTSP information
 const RTSP_URL = 'rtsp://admin:admin@192.168.1.187:554/12';
 
-// Static dosyalar
+// Static files
 app.use(express.static('.'));
 
-// Ana sayfa
+// Home page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'webrtc-client.html'));
 });
 
-// WebSocket sunucusu
+// WebSocket server
 const server = app.listen(PORT, () => {
-    console.log(`🚀 WebRTC sunucu başlatıldı: http://localhost:${PORT}`);
+    console.log(`🚀 WebRTC server started: http://localhost:${PORT}`);
     console.log(`📷 RTSP URL: ${RTSP_URL}`);
 });
 
 const wss = new WebSocket.Server({ server });
 
-// Her client için FFmpeg process'i
+// FFmpeg process for each client
 const clients = new Map();
 
 wss.on('connection', (ws) => {
-    console.log('✅ Yeni client bağlandı');
+    console.log('✅ New client connected');
 
-    // FFmpeg ile RTSP'den WebSocket'e stream
+    // Stream from RTSP to WebSocket with FFmpeg
     const ffmpeg = spawn('ffmpeg', [
         '-rtsp_transport', 'tcp',
         '-fflags', 'nobuffer',
@@ -51,7 +51,7 @@ wss.on('connection', (ws) => {
 
     clients.set(ws, ffmpeg);
 
-    // FFmpeg çıktısını WebSocket'e gönder
+    // Send FFmpeg output to WebSocket
     ffmpeg.stdout.on('data', (data) => {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(data);
@@ -59,13 +59,13 @@ wss.on('connection', (ws) => {
     });
 
     ffmpeg.stderr.on('data', (data) => {
-        // FFmpeg log'ları (debug için)
+        // FFmpeg logs (for debug)
         console.log(`FFmpeg: ${data}`);
     });
 
-    // Client bağlantısı kesildiğinde
+    // When client disconnects
     ws.on('close', () => {
-        console.log('❌ Client bağlantısı kesildi');
+        console.log('❌ Client disconnected');
         const ffmpeg = clients.get(ws);
         if (ffmpeg) {
             ffmpeg.kill('SIGTERM');
@@ -74,19 +74,19 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('error', (err) => {
-        console.error('WebSocket hatası:', err);
+        console.error('WebSocket error:', err);
     });
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    console.log('\n🛑 Sunucu kapatılıyor...');
+    console.log('\n🛑 Server shutting down...');
     clients.forEach((ffmpeg, ws) => {
         ffmpeg.kill('SIGTERM');
         ws.close();
     });
     server.close(() => {
-        console.log('✅ Sunucu kapatıldı');
+        console.log('✅ Server closed');
         process.exit(0);
     });
 });

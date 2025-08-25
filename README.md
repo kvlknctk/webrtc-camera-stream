@@ -1,5 +1,9 @@
 # 📷 IP Camera Control System
 
+## 🏢 About This Project
+
+This project was originally developed as a hobby project by **[Robotaryum.com](https://robotaryum.com)** for aquarium monitoring purposes. Upon request to make the software open source, we are sharing this code with the community. The system provides real-time IP camera streaming and PTZ (Pan-Tilt-Zoom) control functionality.
+
 ## 🚀 Quick Start
 
 ### Start the System:
