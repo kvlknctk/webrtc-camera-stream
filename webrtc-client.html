@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Kamera Kontrol Paneli</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 1.1rem;
+        }
+        
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 1280px;
+            background: #1a1a1a;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+        
+        canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #000;
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.connected {
+            background: #4caf50;
+        }
+        
+        .status-dot.connecting {
+            background: #ff9800;
+        }
+        
+        .status-dot.disconnected {
+            background: #f44336;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            color: #888;
+        }
+        
+        /* PTZ Kontrol Stilleri - Basit Butonlar */
+        .ptz-overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px;
+        }
+        
+        .ptz-title {
+            color: #333;
+            font-size: 10px;
+            text-align: center;
+            margin-bottom: 4px;
+            font-weight: normal;
+        }
+        
+        .ptz-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 28px);
+            grid-template-rows: repeat(3, 28px);
+            gap: 2px;
+        }
+        
+        .ptz-btn {
+            background: #fff;
+            border: 1px solid #999;
+            color: #333;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            outline: none;
+        }
+        
+        .ptz-btn:hover {
+            background: #e0e0e0;
+        }
+        
+        .ptz-btn:active {
+            background: #d0d0d0;
+        }
+        
+        .ptz-btn.center {
+            background: #fff;
+            border-color: #999;
+            font-size: 12px;
+        }
+        
+        .ptz-btn.center:hover {
+            background: #e0e0e0;
+        }
+        
+    </style>
+    <script src="/jsmpeg.min.js"></script>
+</head>
+<body>
+    
+    <div class="video-wrapper">
+        <canvas id="video-canvas"></canvas>
+        <div class="loading" id="loading">Bağlantı kuruluyor...</div>
+        
+        <!-- PTZ Kontrol Paneli -->
+        <div class="ptz-overlay">
+            <div class="ptz-title">PTZ Kontrol</div>
+            <div class="ptz-controls">
+                <div></div>
+                <button class="ptz-btn" onclick="movePTZ('up')" title="Yukarı">⬆</button>
+                <div></div>
+                
+                <button class="ptz-btn" onclick="movePTZ('left')" title="Sol">⬅</button>
+                <button class="ptz-btn center" onclick="movePTZ('home')" title="Merkez">🏠</button>
+                <button class="ptz-btn" onclick="movePTZ('right')" title="Sağ">➡</button>
+                
+                <div></div>
+                <button class="ptz-btn" onclick="movePTZ('down')" title="Aşağı">⬇</button>
+                <div></div>
+            </div>
+        </div>
+        
+        <div class="overlay">
+            <div class="status">
+                <div class="status-dot connecting" id="status-dot"></div>
+                <span id="status-text">Bağlanıyor...</span>
+            </div>
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-label">FPS</span>
+                    <span class="stat-value" id="fps">-</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Bitrate</span>
+                    <span class="stat-value" id="bitrate">-</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Gecikme</span>
+                    <span class="stat-value" id="latency">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <script>
+        let player = null;
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let reconnectTimeout = null;
+        
+        function connect() {
+            const canvas = document.getElementById('video-canvas');
+            const loading = document.getElementById('loading');
+            
+            // Önceki bağlantıyı temizle
+            if (player) {
+                player.destroy();
+                player = null;
+            }
+            
+            // WebSocket URL'i
+            const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}`;
+            
+            try {
+                // JSMpeg player oluştur
+                player = new JSMpeg.Player(wsUrl, {
+                    canvas: canvas,
+                    autoplay: true,
+                    audio: false,
+                    loop: false,
+                    decodeFirstFrame: true,
+                    disableGl: false,
+                    onSourceEstablished: () => {
+                        console.log('✅ Stream bağlantısı kuruldu');
+                        loading.style.display = 'none';
+                        updateStatus('connected', 'Canlı Yayın');
+                        document.getElementById('connectBtn').disabled = true;
+                        
+                        // Çözünürlük bilgisini güncelle
+                        setTimeout(() => {
+                            const width = player.video?.width || '-';
+                            const height = player.video?.height || '-';
+                            document.getElementById('resolution').textContent = 
+                                width !== '-' ? `${width}x${height}` : '-';
+                        }, 1000);
+                    },
+                    onSourceCompleted: () => {
+                        console.log('❌ Stream sona erdi');
+                        updateStatus('disconnected', 'Bağlantı Kesildi');
+                        document.getElementById('connectBtn').disabled = false;
+                        attemptReconnect();
+                    }
+                });
+                
+                // FPS hesaplama
+                startFPSMonitoring();
+                
+            } catch (error) {
+                console.error('Bağlantı hatası:', error);
+                updateStatus('disconnected', 'Bağlantı Hatası');
+                loading.style.display = 'none';
+                document.getElementById('connectBtn').disabled = false;
+            }
+        }
+        
+        function updateStatus(status, text) {
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            
+            statusDot.className = `status-dot ${status}`;
+            statusText.textContent = text;
+        }
+        
+        function startFPSMonitoring() {
+            setInterval(() => {
+                const now = performance.now();
+                const delta = now - lastTime;
+                const fps = Math.round(1000 / (delta / frameCount));
+                
+                if (frameCount > 0) {
+                    document.getElementById('fps').textContent = fps || '-';
+                }
+                
+                // Bitrate hesaplama (tahmini)
+                if (player && player.video) {
+                    const bitrate = Math.round(player.video.currentBitrate / 1000) || '-';
+                    document.getElementById('bitrate').textContent = 
+                        bitrate !== '-' ? `${bitrate} kb/s` : '-';
+                }
+                
+                // Gecikme (tahmini)
+                document.getElementById('latency').textContent = '< 500ms';
+                
+                frameCount = 0;
+                lastTime = now;
+            }, 1000);
+            
+            // Frame sayacı
+            if (player && player.video) {
+                const originalDecode = player.video.decode;
+                player.video.decode = function() {
+                    frameCount++;
+                    return originalDecode.apply(this, arguments);
+                };
+            }
+        }
+        
+        function attemptReconnect() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+            
+            updateStatus('connecting', 'Yeniden bağlanıyor...');
+            reconnectTimeout = setTimeout(() => {
+                connect();
+            }, 3000);
+        }
+        
+        // PTZ Kontrol Fonksiyonları
+        async function movePTZ(direction) {
+            try {
+                const response = await fetch('http://localhost:3001/ptz/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        direction: direction,
+                        duration: direction === 'home' ? 0 : 500
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log(`PTZ hareket: ${direction}`);
+                }
+            } catch (error) {
+                console.error('PTZ hareket hatası:', error);
+            }
+        }
+        
+        // Klavye kontrolü
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    movePTZ('up');
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    movePTZ('down');
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    movePTZ('left');
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    movePTZ('right');
+                    break;
+                case 'h':
+                case 'H':
+                    movePTZ('home');
+                    break;
+            }
+        });
+        
+        // Sayfa yüklendiğinde otomatik bağlan
+        window.addEventListener('load', () => {
+            setTimeout(connect, 500);
+            console.log('PTZ Klavye kontrolleri: W/A/S/D veya Ok tuşları, H: Home');
+        });
+        
+        // Sayfa kapanırken temizlik
+        window.addEventListener('beforeunload', () => {
+            if (player) {
+                player.destroy();
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+        });
+    </script>
+</body>
+</html>
