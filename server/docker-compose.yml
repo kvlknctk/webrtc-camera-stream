@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # WebRTC Application Server
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webrtc-app
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./logs:/var/log
+      - ./public:/app/public:ro
+    networks:
+      - webrtc-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: webrtc-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/letsencrypt:ro
+      - ./nginx/logs:/var/log/nginx
+    networks:
+      - webrtc-network
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Redis Cache (Opsiyonel)
+  redis:
+    image: redis:7-alpine
+    container_name: webrtc-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispass}
+    volumes:
+      - redis-data:/data
+    networks:
+      - webrtc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Coturn TURN Server (WebRTC için)
+  coturn:
+    image: coturn/coturn:alpine
+    container_name: webrtc-turn
+    network_mode: host
+    command: |
+      -n
+      --listening-port=3478
+      --tls-listening-port=5349
+      --external-ip=${SERVER_IP:-0.0.0.0}
+      --realm=${SERVER_DOMAIN:-localhost}
+      --fingerprint
+      --lt-cred-mech
+      --user=turn:${WEBRTC_TURN_PASSWORD:-turnpass}
+      --no-cli
+      --no-tlsv1
+      --no-tlsv1_1
+      --verbose
+    restart: unless-stopped
+
+networks:
+  webrtc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+    driver: local

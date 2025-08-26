@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Stream Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .streams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stream-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s;
+        }
+
+        .stream-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .stream-info {
+            margin-bottom: 10px;
+        }
+
+        .stream-title {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+
+        .stream-meta {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .viewer-count {
+            display: inline-flex;
+            align-items: center;
+            background: #28a745;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #5a67d8;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .no-streams {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 WebRTC Stream Viewer</h1>
+        
+        <div class="status" id="status">
+            Sunucuya bağlanılıyor...
+        </div>
+
+        <div id="streams-container">
+            <div class="streams-grid" id="streams-grid">
+                <!-- Stream kartları buraya gelecek -->
+            </div>
+        </div>
+
+        <div id="video-container" style="display: none;">
+            <button class="btn" onclick="stopViewing()">İzlemeyi Durdur</button>
+            <div class="video-container">
+                <video id="remoteVideo" autoplay playsinline controls></video>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let peerConnection = null;
+        let currentStreamId = null;
+
+        // Socket.IO bağlantı durumu
+        socket.on('connect', () => {
+            updateStatus('connected', 'Sunucuya bağlandı ✅');
+            requestStreams();
+        });
+
+        socket.on('disconnect', () => {
+            updateStatus('disconnected', 'Sunucu bağlantısı koptu ❌');
+        });
+
+        // Stream listesini al
+        function requestStreams() {
+            socket.emit('get-streams');
+        }
+
+        // Stream listesi geldiğinde
+        socket.on('streams-list', (streams) => {
+            displayStreams(streams);
+        });
+
+        // Yeni stream bildirimi
+        socket.on('new-stream', (data) => {
+            requestStreams();
+        });
+
+        // Stream sona erdi
+        socket.on('stream-ended', (data) => {
+            if (currentStreamId === data.streamId) {
+                stopViewing();
+                alert('Yayın sona erdi');
+            }
+            requestStreams();
+        });
+
+        // Stream listesini göster
+        function displayStreams(streams) {
+            const grid = document.getElementById('streams-grid');
+            
+            if (streams.length === 0) {
+                grid.innerHTML = '<div class="no-streams">Aktif yayın bulunamadı</div>';
+                return;
+            }
+
+            grid.innerHTML = streams.map(stream => `
+                <div class="stream-card">
+                    <div class="stream-info">
+                        <div class="stream-title">
+                            ${stream.metadata?.name || 'İsimsiz Yayın'}
+                            <span class="viewer-count">👁 ${stream.viewerCount}</span>
+                        </div>
+                        <div class="stream-meta">
+                            ID: ${stream.id.substring(0, 8)}...
+                        </div>
+                        <div class="stream-meta">
+                            Başlangıç: ${new Date(stream.createdAt).toLocaleTimeString('tr-TR')}
+                        </div>
+                    </div>
+                    <button class="btn" onclick="joinStream('${stream.id}')">
+                        İzlemeye Başla
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Stream'e katıl
+        async function joinStream(streamId) {
+            currentStreamId = streamId;
+            socket.emit('join-stream', { streamId });
+            
+            document.getElementById('streams-container').style.display = 'none';
+            document.getElementById('video-container').style.display = 'block';
+        }
+
+        // Stream'e katıldıktan sonra
+        socket.on('joined-stream', async (data) => {
+            await setupPeerConnection(data.iceServers);
+        });
+
+        // WebRTC kurulumu
+        async function setupPeerConnection(iceServers) {
+            peerConnection = new RTCPeerConnection(iceServers);
+
+            // Remote stream'i al
+            peerConnection.ontrack = (event) => {
+                const remoteVideo = document.getElementById('remoteVideo');
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            // ICE candidate
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', {
+                        streamId: currentStreamId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Offer bekle
+            socket.on('offer', async (data) => {
+                await peerConnection.setRemoteDescription(data.offer);
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                socket.emit('answer', {
+                    to: data.from,
+                    answer: answer
+                });
+            });
+
+            // ICE candidate al
+            socket.on('ice-candidate', async (data) => {
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(data.candidate);
+                }
+            });
+        }
+
+        // İzlemeyi durdur
+        function stopViewing() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            const remoteVideo = document.getElementById('remoteVideo');
+            remoteVideo.srcObject = null;
+            
+            currentStreamId = null;
+            
+            document.getElementById('streams-container').style.display = 'block';
+            document.getElementById('video-container').style.display = 'none';
+            
+            requestStreams();
+        }
+
+        // Durum güncellemesi
+        function updateStatus(className, text) {
+            const status = document.getElementById('status');
+            status.className = `status ${className}`;
+            status.textContent = text;
+        }
+
+        // Her 5 saniyede stream listesini güncelle
+        setInterval(requestStreams, 5000);
+    </script>
+</body>
+</html>
