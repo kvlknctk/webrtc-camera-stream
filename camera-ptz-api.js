@@ -1,10 +1,11 @@
 const axios = require('axios');
+const config = require('./config');
 
-// Camera information
-const CAMERA_IP = '192.168.1.187';
-const USERNAME = 'admin';
-const PASSWORD = 'admin';
-const BASE_URL = `http://${CAMERA_IP}`;
+// Kamera bilgileri config'den alınıyor
+const CAMERA_IP = config.camera.ip;
+const USERNAME = config.camera.username;
+const PASSWORD = config.camera.password;
+const BASE_URL = config.getCameraHttpUrl();
 
 // Basic auth header
 const auth = Buffer.from(`${USERNAME}:${PASSWORD}`).toString('base64');
@@ -33,7 +34,7 @@ class CameraPTZ {
         };
 
         const action = actions[direction] || 'stop';
-        
+
         try {
             const url = `${this.baseUrl}/web/cgi-bin/hi3510/ptzctrl.cgi?-step=0&-act=${action}&-speed=${speed}`;
             const response = await axios.get(url, { headers: this.headers, timeout: 2000 });
@@ -44,19 +45,19 @@ class CameraPTZ {
             return false;
         }
     }
-    
+
 
     // Movement control
     async move(direction, duration = 500) {
         const success = await this.hi3510Control(direction);
-        
+
         if (success && duration > 0 && direction !== 'stop' && direction !== 'home') {
             // Stop after specified duration
             setTimeout(async () => {
                 await this.hi3510Control('stop');
             }, duration);
         }
-        
+
         return success ? 'hi3510' : null;
     }
 }
@@ -69,17 +70,17 @@ const cors = require('cors');
 function startServer() {
     const app = express();
     const PORT = 3001;
-    
+
     app.use(cors());
     app.use(express.json());
-    
+
     const ptz = new CameraPTZ();
-    
+
     // PTZ movement endpoint
     app.post('/ptz/move', async (req, res) => {
         const { direction, duration = 500 } = req.body;
         console.log(`📹 PTZ Movement request: ${direction} (${duration}ms)`);
-        
+
         try {
             const result = await ptz.move(direction, duration);
             res.json({ success: !!result, method: result });
@@ -88,7 +89,7 @@ function startServer() {
             res.status(500).json({ error: error.message });
         }
     });
-    
+
     app.listen(PORT, () => {
         console.log(`\n🚀 PTZ API Server started: http://localhost:${PORT}`);
         console.log('📝 Endpoint: POST /ptz/move - Camera movement\n');
@@ -98,7 +99,7 @@ function startServer() {
 // Main program
 if (require.main === module) {
     const args = process.argv.slice(2);
-    
+
     if (args[0] === 'server') {
         startServer();
     } else {

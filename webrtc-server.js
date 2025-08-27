@@ -2,12 +2,14 @@ const express = require('express');
 const { spawn } = require('child_process');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
+const config = require('./config');
 
 const app = express();
-const PORT = 8080;
+const PORT = config.server.port;
 
-// RTSP information
-const RTSP_URL = 'rtsp://admin:admin@192.168.1.187:554/12';
+// RTSP URL merkezi config'den alınıyor
+const RTSP_URL = config.getRtspUrl();
 
 // Static files
 app.use(express.static('.'));
@@ -17,10 +19,44 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'webrtc-client.html'));
 });
 
+// FFmpeg kontrolü
+function checkFFmpeg() {
+    const { exec } = require('child_process');
+    const ffmpegCmd = config.ffmpeg.path;
+    
+    return new Promise((resolve) => {
+        exec(`${ffmpegCmd} -version`, (error) => {
+            if (error) {
+                console.error('⚠️  FFmpeg bulunamadı!');
+                console.log('📥 FFmpeg kurulum bilgisi:');
+                if (config.platform.isWindows) {
+                    console.log('   Windows: https://www.gyan.dev/ffmpeg/builds/');
+                    console.log('   1. Full build\'i indirin');
+                    console.log('   2. ffmpeg.exe\'yi bu klasöre kopyalayın veya PATH\'e ekleyin');
+                } else if (config.platform.isMac) {
+                    console.log('   Mac: brew install ffmpeg');
+                } else {
+                    console.log('   Linux: sudo apt-get install ffmpeg');
+                }
+                resolve(false);
+            } else {
+                console.log('✅ FFmpeg bulundu');
+                resolve(true);
+            }
+        });
+    });
+}
+
 // WebSocket server
-const server = app.listen(PORT, () => {
-    console.log(`🚀 WebRTC server started: http://localhost:${PORT}`);
-    console.log(`📷 RTSP URL: ${RTSP_URL}`);
+const server = app.listen(PORT, async () => {
+    config.printConfig();
+    
+    const ffmpegOk = await checkFFmpeg();
+    if (!ffmpegOk && !config.platform.isWindows) {
+        console.log('⚠️  FFmpeg olmadan stream çalışmayacak!');
+    }
+    
+    console.log(`🚀 WebRTC server başlatıldı: http://localhost:${PORT}`);
 });
 
 const wss = new WebSocket.Server({ server });
@@ -29,25 +65,29 @@ const wss = new WebSocket.Server({ server });
 const clients = new Map();
 
 wss.on('connection', (ws) => {
-    console.log('✅ New client connected');
+    console.log('✅ Yeni client bağlandı');
 
-    // Stream from RTSP to WebSocket with FFmpeg
-    const ffmpeg = spawn('ffmpeg', [
-        '-rtsp_transport', 'tcp',
-        '-fflags', 'nobuffer',
-        '-flags', 'low_delay',
-        '-i', RTSP_URL,
-        '-f', 'mpegts',
-        '-codec:v', 'mpeg1video',
-        '-b:v', '1000k',
-        '-r', '30',
-        '-bf', '0',
-        '-codec:a', 'mp2',
-        '-ar', '44100',
-        '-ac', '1',
-        '-b:a', '128k',
-        'pipe:1'
-    ]);
+    // FFmpeg process'i güvenli başlat
+    let ffmpeg;
+    
+    try {
+        const ffmpegPath = config.ffmpeg.path;
+        const args = config.getFFmpegArgs(RTSP_URL);
+        
+        console.log(`🎬 FFmpeg başlatılıyor: ${ffmpegPath}`);
+        
+        ffmpeg = spawn(ffmpegPath, args, {
+            windowsHide: true, // Windows'ta konsol penceresi açılmasını engelle
+            shell: false
+        });
+    } catch (error) {
+        console.error('❌ FFmpeg başlatma hatası:', error.message);
+        ws.send(JSON.stringify({ 
+            error: 'FFmpeg başlatılamadı. Lütfen FFmpeg kurulumunu kontrol edin.' 
+        }));
+        ws.close();
+        return;
+    }
 
     clients.set(ws, ffmpeg);
 
@@ -59,8 +99,19 @@ wss.on('connection', (ws) => {
     });
 
     ffmpeg.stderr.on('data', (data) => {
-        // FFmpeg logs (for debug)
-        console.log(`FFmpeg: ${data}`);
+        // FFmpeg loglarını sadece hata durumunda göster
+        const log = data.toString();
+        if (log.includes('error') || log.includes('Error')) {
+            console.error(`FFmpeg Hata: ${log}`);
+        }
+    });
+
+    ffmpeg.on('error', (error) => {
+        console.error('❌ FFmpeg process hatası:', error.message);
+        if (error.code === 'ENOENT') {
+            console.log('💡 FFmpeg bulunamadı. Kurulum için:');
+            console.log('   https://www.gyan.dev/ffmpeg/builds/');
+        }
     });
 
     // When client disconnects
