@@ -4,12 +4,8 @@
 const os = require('os');
 const path = require('path');
 
-// .env dosyasını yükle (varsa)
-try {
-    require('dotenv').config();
-} catch (e) {
-    // dotenv yüklü değilse devam et
-}
+// .env dosyasını yükle
+require('dotenv').config();
 
 const config = {
     // Kamera Ayarları
